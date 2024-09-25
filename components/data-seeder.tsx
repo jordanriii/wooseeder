@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "../components/ui/switch"
+import { CheckCircle, XCircle } from 'lucide-react'
 
 type AmountType = {
   customers: number;
@@ -21,7 +22,7 @@ export function DataSeederComponent() {
     orders: 5,
   })
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const dataTypes = [
     { id: 'customers' as keyof AmountType, label: 'Customers' },
@@ -54,13 +55,39 @@ export function DataSeederComponent() {
         }),
       })
       const data = await response.json()
-      setResult(data.message)
+      console.log('API Response:', data) // Log the entire response
+      setResult(data)
     } catch (error) {
       console.error('Error seeding data:', error)
-      setResult('Error seeding data. Please try again.')
+      setResult({ success: false, message: 'Error seeding data. Please try again.' })
     } finally {
       setLoading(false)
     }
+  }
+
+  const renderResult = () => {
+    if (!result) return null
+    console.log('Rendering result:', result) // Log the result being rendered
+    return (
+      <div className="mt-4 p-4 rounded-md" style={{backgroundColor: result.success ? '#dcfce7' : '#fee2e2'}}>
+        <div className="flex items-center">
+          {result.success ? (
+            <CheckCircle className="text-green-500 h-5 w-5 mr-2" />
+          ) : (
+            <XCircle className="text-red-500 h-5 w-5 mr-2" />
+          )}
+          <p className="font-medium">
+            Status: {result.success ? 'Success' : 'Error'}
+          </p>
+        </div>
+        <p className={result.success ? "text-green-700 mt-2" : "text-red-500 mt-2"}>
+          {result.message}
+        </p>
+        <pre className="mt-2 text-sm bg-gray-100 p-2 rounded">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </div>
+    )
   }
 
   return (
@@ -90,7 +117,7 @@ export function DataSeederComponent() {
           <Button onClick={handleSeed} disabled={selectedTypes.length === 0 || loading} className="w-full">
             {loading ? 'Seeding...' : 'Seed Selected Data'}
           </Button>
-          {result && <p className="text-sm mt-2">{result}</p>}
+          {renderResult()}
         </div>
       </CardContent>
     </Card>
