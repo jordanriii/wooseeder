@@ -12,14 +12,16 @@ type AmountType = {
   customers: number;
   products: number;
   orders: number;
+  productsPerOrder: number;
 }
 
 export function DataSeederComponent() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [amounts, setAmounts] = useState<AmountType>({
     customers: 10,
-    products: 20,
+    products: 50,
     orders: 5,
+    productsPerOrder: 3,
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -28,6 +30,7 @@ export function DataSeederComponent() {
     { id: 'customers' as keyof AmountType, label: 'Customers' },
     { id: 'products' as keyof AmountType, label: 'Products' },
     { id: 'orders' as keyof AmountType, label: 'Orders' },
+    { id: 'productsPerOrder' as keyof AmountType, label: 'Products Per Order' },
   ]
 
   const handleSwitchChange = (type: string, checked: boolean) => {
@@ -55,17 +58,14 @@ export function DataSeederComponent() {
         }),
       })
       const data = await response.json()
-      console.log('API Response:', data) // Log the entire response
-      
-      // Ensure we're correctly interpreting the API response
-      if (response.ok && !data.error) {
-        setResult({ success: true, message: data.message || 'Data seeded successfully.' })
+      if (response.ok) {
+        setResult({ success: true, message: data.message })
       } else {
-        setResult({ success: false, message: data.error || 'Error seeding data. Please try again.' })
+        setResult({ success: false, message: data.message || 'An error occurred while seeding data.' })
       }
     } catch (error) {
       console.error('Error seeding data:', error)
-      setResult({ success: false, message: 'Error seeding data. Please try again.' })
+      setResult({ success: false, message: 'An error occurred while seeding data.' })
     } finally {
       setLoading(false)
     }
@@ -113,6 +113,7 @@ export function DataSeederComponent() {
                 onChange={(e) => handleAmountChange(type.id, e.target.value)}
                 className="w-20"
                 min="1"
+                max={type.id === 'productsPerOrder' ? "50" : undefined}
               />
             </div>
           ))}

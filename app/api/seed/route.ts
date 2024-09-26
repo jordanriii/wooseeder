@@ -67,7 +67,7 @@ export async function POST(request: Request) {
             results.push(`Successfully seeded ${amounts.products} products`);
             break;
           case 'orders':
-            await seedOrders(amounts.orders);
+            await seedOrders(amounts.orders, amounts.productsPerOrder);
             results.push(`Successfully seeded ${amounts.orders} orders`);
             break;
         }
@@ -124,83 +124,121 @@ function getRandomOrderStatus() {
 }
 
 async function seedProducts(amount: number) {
-  console.log(`Seeding ${amount} products`); // Add this log
-  for (let i = 0; i < amount; i++) {
-    const name = getRandomProductName();
-    const description = getRandomDescription();
-    const price = getRandomPrice();
-    const sku = getRandomSKU();
+  console.log(`Starting to seed ${amount} products`);
+  const batchSize = 5; // Reduced batch size
+  const batches = Math.ceil(amount / batchSize);
+  let totalCreatedProducts = 0;
 
-    const productData = {
-      name: name,
-      type: 'simple',
-      regular_price: price,
-      description: description,
-      short_description: `${name} - ${description.substring(0, 50)}...`,
-      categories: [
-        {
-          id: 1 // Assuming you have at least one category, adjust as needed
-        }
-      ],
-      images: [
-        {
-          src: `https://picsum.photos/id/${Math.floor(Math.random() * 1000)}/200/300` // Random image
-        }
-      ],
-      sku: sku,
-      stock_quantity: Math.floor(Math.random() * 100) + 1,
-      stock_status: 'instock'
-    };
+  for (let batch = 0; batch < batches; batch++) {
+    const batchProducts = [];
+    const batchStart = batch * batchSize;
+    const batchEnd = Math.min((batch + 1) * batchSize, amount);
+
+    for (let i = batchStart; i < batchEnd; i++) {
+      const name = getRandomProductName();
+      const description = getRandomDescription();
+      const price = getRandomPrice();
+      const sku = getRandomSKU();
+
+      batchProducts.push({
+        name: name,
+        type: 'simple',
+        regular_price: price,
+        description: description,
+        short_description: `${name} - ${description.substring(0, 50)}...`,
+        categories: [
+          {
+            id: 1 // Assuming you have at least one category, adjust as needed
+          }
+        ],
+        // Remove the images field for now
+        sku: sku,
+        stock_quantity: Math.floor(Math.random() * 100) + 1,
+        stock_status: 'instock'
+      });
+    }
 
     try {
-      console.log(`Attempting to create product ${i + 1} of ${amount}: ${name}`);
-      const response = await api.post('products', productData);
-      console.log(`Product created successfully: ${response.data.id}`);
+      console.log(`Attempting to create batch ${batch + 1} of ${batches} (${batchProducts.length} products)`);
+      const response = await api.post('products/batch', { create: batchProducts });
+      console.log(`Batch ${batch + 1} response:`, JSON.stringify(response.data, null, 2));
+      
+      if (response.data.create && Array.isArray(response.data.create)) {
+        const createdProducts = response.data.create.filter((product: any) => product && product.id);
+        console.log(`Batch ${batch + 1} created successfully. Created ${createdProducts.length} products.`);
+        for (const product of createdProducts) {
+          console.log(`Created product: ID ${product.id}, Name: ${product.name}`);
+          totalCreatedProducts++;
+        }
+      } else {
+        console.error(`Batch ${batch + 1} creation failed or returned unexpected data.`);
+        console.error('Response data:', response.data);
+      }
     } catch (error) {
-      console.error(`Error creating product: ${name}`);
+      console.error(`Error creating batch ${batch + 1}`);
       if (error instanceof Error) {
+        console.error('Error name:', error.name);
         console.error('Error message:', error.message);
-        // Type assertion for potential Axios error structure
         const axiosError = error as { response?: { data: unknown, status: number } };
         if (axiosError.response) {
-          console.error('Error response data:', axiosError.response.data);
+          console.error('Error response data:', JSON.stringify(axiosError.response.data, null, 2));
           console.error('Error response status:', axiosError.response.status);
         }
       } else {
         console.error('Unknown error:', error);
       }
     }
+
+    // Increased delay between batches
+    console.log(`Waiting 3 seconds before next batch...`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+
+  console.log(`Finished seeding products. Total products created: ${totalCreatedProducts}`);
+
+  // Verify products were actually created
+  try {
+    const verificationResponse = await api.get('products', { per_page: 100 });
+    console.log(`Verification: Found ${verificationResponse.data.length} products in the store.`);
+  } catch (error) {
+    console.error('Error verifying product creation:', error);
   }
 }
 
-async function seedOrders(amount: number) {
+async function seedOrders(amount: number, productsPerOrder: number) {
   // Fetch all customers and products
   const { data: customers } = await api.get('customers', { per_page: 100 })
   const { data: products } = await api.get('products', { per_page: 100 })
 
+  console.log(`Total available products: ${products.length}`);
+
   for (let i = 0; i < amount; i++) {
     const customer = customers[Math.floor(Math.random() * customers.length)]
-    const numberOfItems = Math.floor(Math.random() * 5) + 1 // Order 1-5 items
+    const numberOfItems = Math.min(productsPerOrder, products.length) // Remove the 50 limit
 
-    const lineItems: Array<{product_id: number, quantity: number}> = [];
-    let totalAmount = 0;
+    console.log(`Attempting to create order ${i + 1} with ${numberOfItems} unique products`);
 
-    for (let j = 0; j < numberOfItems; j++) {
-      const product = products[Math.floor(Math.random() * products.length)]
-      const quantity = Math.floor(Math.random() * 3) + 1 // Order 1-3 of each item
-      const price = parseFloat(product.price)
-      
-      lineItems.push({
-        product_id: product.id,
-        quantity: quantity
-      })
+    // Shuffle the entire products array
+    const shuffledProducts = [...products].sort(() => Math.random() - 0.5);
 
-      totalAmount += price * quantity
-    }
+    // Take the first `numberOfItems` products
+    const selectedProducts = shuffledProducts.slice(0, numberOfItems);
+
+    const lineItems = selectedProducts.map(product => ({
+      product_id: product.id,
+      quantity: Math.floor(Math.random() * 3) + 1 // Order 1-3 of each item
+    }));
+
+    const totalAmount = lineItems.reduce((total, item) => {
+      const product = products.find(p => p.id === item.product_id);
+      return total + (parseFloat(product.price) * item.quantity);
+    }, 0);
+
+    console.log(`Created order with ${lineItems.length} unique products`);
 
     const orderData = {
       customer_id: customer.id,
-      status: getRandomOrderStatus(), // Use the new function here
+      status: getRandomOrderStatus(),
       line_items: lineItems,
       billing: {
         first_name: customer.first_name,
@@ -227,9 +265,8 @@ async function seedOrders(amount: number) {
     }
 
     try {
-      console.log(`Creating order ${i + 1} of ${amount}`);
       const response = await api.post('orders', orderData);
-      console.log(`Order created successfully: ${response.data.id}`);
+      console.log(`Order created successfully: ${response.data.id} with ${lineItems.length} unique products`);
     } catch (error) {
       console.error(`Error creating order for customer ${customer.id}`);
       if (error instanceof Error) {
